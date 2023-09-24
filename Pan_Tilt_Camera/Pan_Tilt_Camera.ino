@@ -143,10 +143,15 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
       </tr>      
     </table>
     <tr>
-    <td colspan="3" style="text-align:center; padding-top:20px;">
-        <button onclick="resetServos()" style="background-color: red; color: white; padding: 20px 40px; font-size: 20px;">Reset</button>
-    </td>
-</tr>
+      <td colspan="3" style="text-align:center; padding-top:20px;">
+          <button onclick="resetServos()" style="background-color: red; color: white; padding: 20px 40px; font-size: 20px;">Reset</button>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3" style="text-align:center; padding-top:20px;">
+          <button onclick="demoServos()" style="background-color: green; color: white; padding: 20px 40px; font-size: 20px;">Demo</button>
+      </td>
+    </tr>
 
 
   
@@ -160,6 +165,10 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
         document.getElementById("Pan").value = 0;
         document.getElementById("Tilt").value = 90;
         websocketServoInput.send("ResetServos");
+      }
+
+      function demoServos() {
+        websocketServoInput.send("DemoServos");
       }
 
       
@@ -223,6 +232,14 @@ void handleNotFound(AsyncWebServerRequest *request)
     request->send(404, "text/plain", "File Not Found");
 }
 
+float easeInOutQuad(float t) 
+{
+    t /= 1.0f / 2.0f;
+    if (t < 1) return 0.5f * t * t;
+    t--;
+    return -0.5f * (t * (t - 2) - 1);
+}
+
 void onServoInputWebSocketEvent(AsyncWebSocket *server, 
                       AsyncWebSocketClient *client, 
                       AwsEventType type,
@@ -257,6 +274,22 @@ void onServoInputWebSocketEvent(AsyncWebSocket *server,
             panServo.write(0);
             tiltServo.write(90);
         }
+        else if (myData == "DemoServos")
+        {
+          int panPositions[] = {0, 130, 65, 0, 130, 20, 110, 45, 85, 0, 130, 30, 100, 55, 75, 0, 0};
+          int tiltPositions[] = {0, 180, 90, 180, 0, 170, 10, 160, 20, 150, 30, 140, 40, 130, 50, 120, 90};
+
+          int numPositions = sizeof(panPositions) / sizeof(panPositions[0]);
+
+          for (int i = 0; i < numPositions; i++) 
+          {
+              panServo.write(panPositions[i]);
+              tiltServo.write(tiltPositions[i]);
+
+              delay(200); // wait for 200ms before moving to the next position
+          }
+        }
+
         else 
         {
             std::istringstream ss(myData);

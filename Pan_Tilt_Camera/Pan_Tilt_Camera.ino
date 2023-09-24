@@ -1,4 +1,5 @@
 #include "esp_camera.h"
+#include "sensor.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <AsyncTCP.h>
@@ -118,7 +119,7 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
         <td style="text-align:left"><b>Pan:</b></td>
         <td colspan=2>
          <div class="slidecontainer">
-            <input type="range" min="0" max="180" value="90" class="slider" id="Pan" oninput='sendButtonInput("Pan",value)'>
+            <input type="range" min="0" max="130" value="0" class="slider" id="Pan" oninput='sendButtonInput("Pan",value)'>
           </div>
         </td>
       </tr> 
@@ -141,12 +142,26 @@ const char* htmlHomePage PROGMEM = R"HTMLHOMEPAGE(
         </td>   
       </tr>      
     </table>
+    <tr>
+    <td colspan="3" style="text-align:center; padding-top:20px;">
+        <button onclick="resetServos()" style="background-color: red; color: white; padding: 20px 40px; font-size: 20px;">Reset</button>
+    </td>
+</tr>
+
+
   
     <script>
       var webSocketCameraUrl = "ws:\/\/" + window.location.hostname + "/Camera";
       var webSocketServoInputUrl = "ws:\/\/" + window.location.hostname + "/ServoInput";      
       var websocketCamera;
       var websocketServoInput;
+
+      function resetServos() {
+        document.getElementById("Pan").value = 0;
+        document.getElementById("Tilt").value = 90;
+        websocketServoInput.send("ResetServos");
+      }
+
       
       function initCameraWebSocket() 
       {
@@ -219,12 +234,12 @@ void onServoInputWebSocketEvent(AsyncWebSocket *server,
   {
     case WS_EVT_CONNECT:
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
-      panServo.write(90);
+      panServo.write(0);
       tiltServo.write(90);
       break;
     case WS_EVT_DISCONNECT:
       Serial.printf("WebSocket client #%u disconnected\n", client->id());
-      panServo.write(90);
+      panServo.write(0);
       tiltServo.write(90);
       ledcWrite(PWMLightChannel, 0);
       break;
@@ -236,28 +251,34 @@ void onServoInputWebSocketEvent(AsyncWebSocket *server,
         std::string myData = "";
         myData.assign((char *)data, len);
         Serial.printf("Key,Value = [%s]\n", myData.c_str());        
-        std::istringstream ss(myData);
-        std::string key, value;
-        std::getline(ss, key, ',');
-        std::getline(ss, value, ',');
-        if ( value != "" )
+        
+        if (myData == "ResetServos")
         {
-          int valueInt = atoi(value.c_str());
-          if (key == "Pan")
-          {
-            panServo.write(valueInt);
-          }
-          else if (key == "Tilt")
-          {
-            tiltServo.write(valueInt);   
-          }
-          else if (key == "Light")
-          {
-            
-            ledcWrite(PWMLightChannel, valueInt);    
-            tiltServo.write(valueInt);   
-
-          }           
+            panServo.write(0);
+            tiltServo.write(90);
+        }
+        else 
+        {
+            std::istringstream ss(myData);
+            std::string key, value;
+            std::getline(ss, key, ',');
+            std::getline(ss, value, ',');
+            if ( value != "" )
+            {
+                int valueInt = atoi(value.c_str());
+                if (key == "Pan")
+                {
+                    panServo.write(valueInt);
+                }
+                else if (key == "Tilt")
+                {
+                    tiltServo.write(valueInt);   
+                }
+                else if (key == "Light")
+                {
+                    ledcWrite(PWMLightChannel, valueInt);    
+                }           
+            }
         }
       }
       break;
@@ -265,7 +286,7 @@ void onServoInputWebSocketEvent(AsyncWebSocket *server,
     case WS_EVT_ERROR:
       break;
     default:
-      break;  
+      break;   
   }
 }
 
@@ -314,6 +335,16 @@ void setupCamera()
     heap_caps_malloc_extmem_enable(20000);  
     Serial.printf("PSRAM initialized. malloc to take memory from psram above this size");    
   }  
+
+  sensor_t * s = esp_camera_sensor_get();
+  // initial sensors are flipped vertically and colors are a bit saturated
+  if (s->id.PID == OV3660_PID) {
+    s->set_vflip(s, 1); // flip it back
+    s->set_brightness(s, 1); // up the brightness just a bit
+    s->set_saturation(s, -2); // lower the saturation
+  }
+  // drop down frame size for higher initial frame rate
+  s->set_framesize(s, FRAMESIZE_HQVGA);
 }
 
 void sendCameraPicture()
@@ -347,7 +378,7 @@ void sendCameraPicture()
   }
   
   unsigned long  startTime3 = millis();  
-  Serial.printf("Time taken Total: %d|%d|%d\n",startTime3 - startTime1, startTime2 - startTime1, startTime3-startTime2 );
+  //Serial.printf("Time taken Total: %d|%d|%d\n",startTime3 - startTime1, startTime2 - startTime1, startTime3-startTime2 );
 }
 
 void setUpPinModes()
@@ -357,9 +388,8 @@ void setUpPinModes()
   panServo.attach(PAN_PIN);
   tiltServo.attach(TILT_PIN);
 
-  //panServo.write(0);
-  tiltServo.write(0);
   panServo.write(0);
+  tiltServo.write(90);
   delay(2000);
 
   //Set up flash light
